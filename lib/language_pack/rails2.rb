@@ -16,8 +16,8 @@ class LanguagePack::Rails2 < LanguagePack::Ruby
     end
   end
 
-  def initialize(build_path, cache_path=nil)
-    super(build_path, cache_path)
+  def initialize(*args)
+    super(*args)
     @rails_runner = LanguagePack::Helpers::RailsRunner.new
   end
 
@@ -45,12 +45,12 @@ class LanguagePack::Rails2 < LanguagePack::Ruby
   def default_process_types
     instrument "rails2.default_process_types" do
       web_process = bundler.has_gem?("thin") ?
-        "bundle exec thin start -e $RAILS_ENV -p $PORT" :
-        "bundle exec ruby script/server -p $PORT"
+        "bundle exec thin start -e $RAILS_ENV -p ${PORT:-5000}" :
+        "bundle exec ruby script/server -p ${PORT:-5000}"
 
       process_types = super
       process_types["web"]     = web_process
-      process_types["worker"]  = "bundle exec rake jobs:work" if rake.task("jobs:work").is_defined?
+      process_types["worker"]  = "bundle exec rake jobs:work" if has_jobs_work_task?
       process_types["console"] = "bundle exec script/console"
       process_types
     end
@@ -61,6 +61,12 @@ class LanguagePack::Rails2 < LanguagePack::Ruby
       install_plugins
       super
     end
+  end
+
+  def build
+    # TODO install plugins into separate layer
+    install_plugins
+    super
   end
 
   def best_practice_warnings
@@ -75,6 +81,14 @@ WARNING
   end
 
 private
+  def has_jobs_work_task?
+    if result = rake.task("jobs:work").is_defined?
+      mcount("task.jobs:work.enabled")
+    else
+      mcount("task.jobs:work.disabled")
+    end
+    result
+  end
 
   def install_plugins
     instrument "rails2.install_plugins" do
@@ -85,8 +99,8 @@ private
   end
 
   # sets up the profile.d script for this buildpack
-  def setup_profiled
-    super
+  def setup_profiled(*args)
+    super(*args)
     default_env_vars.each do |key, value|
       set_env_default key, value
     end
